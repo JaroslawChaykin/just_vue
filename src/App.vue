@@ -1,7 +1,12 @@
 <template>
   <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
+    <!--    <div class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center">-->
+    <!--      <svg class="animate-spin -ml-1 mr-3 h-12 w-12 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">-->
+    <!--        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>-->
+    <!--        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>-->
+    <!--      </svg>-->
+    <!--    </div>-->
     <div class="container">
-      <div class="w-full my-4"></div>
       <section>
         <div class="flex">
           <div class="max-w-xs">
@@ -18,6 +23,21 @@
                   class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
                   placeholder="Например DOGE"
               />
+            </div>
+            <div
+                v-if="ticker"
+                class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+              <span
+                  v-for="code in selectedOfCryptoCodes()"
+                  :key="code"
+                  @click="ticker = cryptoCodes[code], add()"
+                  class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
+                {{ cryptoCodes[code] }}
+              </span>
+            </div>
+            <div v-if="tickers.find(t => t.name.toLowerCase() === ticker.toLowerCase())"
+                 class="text-sm text-red-600"
+            >Такой тикер уже добавлен
             </div>
           </div>
         </div>
@@ -140,48 +160,77 @@ export default {
       ticker: '',
       tickers: [],
       sel: null,
-      graphHistory: []
+      graphHistory: [],
+      cryptoCodes: []
     };
   },
   methods: {
+    subscribeToUpdates(tickerName) {
+      setInterval(async () => {
+        const response = await
+            fetch(`https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD`, {
+              headers: {
+                authorization: 'b591c602be8b201e1a1d1d6a4f30d291ff40eeab03df64841adceb2c19bd817c'
+              }
+            })
+                .then(data => data.json());
+
+        this.tickers.find(t => t.name === tickerName).price =
+            response.USD > 1 ? response.USD.toFixed(2) : response.USD.toPrecision(2);
+
+        if (this.sel?.name === tickerName) {
+          this.graphHistory.push(response.USD);
+        }
+      }, 3000);
+    },
     add() {
+
+      if (this.ticker.trim() === '') return null;
+      if (this.tickers.find(t => t.name.toLowerCase() === this.ticker.toLowerCase())) return null;
+
       const newTicker = {
         name: this.ticker,
         price: '—'
       };
-
-      setInterval(async () => {
-        const response = await
-            fetch(`https://min-api.cryptocompare.com/data/price?fsym=${newTicker.name}&tsyms=USD`, {
-              headers: {
-                authorization: 'b591c602be8b201e1a1d1d6a4f30d291ff40eeab03df64841adceb2c19bd817c'
-              }})
-                .then(data => data.json());
-
-        this.tickers.find(t => t.name === newTicker.name).price =
-            response.USD > 1 ? response.USD.toFixed(2) : response.USD.toPrecision(2)
-
-        if(this.sel?.name === newTicker.name) {
-          this.graphHistory.push(response.USD)
-        }
-      }, 3000);
-
       this.tickers.push(newTicker);
+
+      localStorage.setItem('crypto-list', JSON.stringify(this.tickers))
+
+      this.subscribeToUpdates(newTicker.name)
+
       this.ticker = '';
     },
     handleDelete(tickerToRemove) {
       this.tickers = this.tickers.filter(t => t !== tickerToRemove);
     },
     normalizeGraph() {
-      const maxValue = Math.max(...this.graphHistory)
-      const minValue = Math.min(...this.graphHistory)
+      const maxValue = Math.max(...this.graphHistory);
+      const minValue = Math.min(...this.graphHistory);
 
-      return this.graphHistory.map(price => 5 + ((price - minValue) * 95) / (maxValue - minValue))
+      return this.graphHistory.map(price => 5 + ((price - minValue) * 95) / (maxValue - minValue));
     },
     select(ticker) {
-      this.sel = ticker
-      this.graphHistory = []
+      this.sel = ticker;
+      this.graphHistory = [];
+    },
+    selectedOfCryptoCodes() {
+      let result = this.cryptoCodes.map((item, i) => item.indexOf(this.ticker) >= 0 ? i : -1).filter(item => item >= 0);
+      return result.splice(0, 4)
     }
+  },
+  async created() {
+    let cryptoList = localStorage.getItem('crypto-list')
+
+    if(cryptoList) {
+      this.tickers = JSON.parse(cryptoList)
+      this.tickers.forEach(t => {
+        this.subscribeToUpdates(t.name)
+      })
+    }
+
+    const response = await fetch('https://min-api.cryptocompare.com/data/all/coinlist?summary=true')
+        .then(data => data.json());
+    this.cryptoCodes.push(...Object.keys(response.Data));
   }
 };
 </script>
